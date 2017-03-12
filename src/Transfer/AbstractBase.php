@@ -24,6 +24,16 @@ abstract class AbstractBase implements Transfer
     protected $producerID = '';
 
     /**
+     * @var int
+     */
+    protected $timeoutConnectMS = 1000;
+
+    /**
+     * @var int
+     */
+    protected $timeoutWaitMS = 1000;
+
+    /**
      * @param Authorized $authorized
      */
     public function setAuthorized(Authorized $authorized)
@@ -37,5 +47,21 @@ abstract class AbstractBase implements Transfer
     public function setProducerID($producerID)
     {
         $this->producerID = $producerID;
+    }
+
+    /**
+     * @param $ms
+     */
+    public function setTimeoutConnect($ms)
+    {
+        $this->timeoutConnectMS = $ms;
+    }
+
+    /**
+     * @param $ms
+     */
+    public function setTimeoutWait($ms)
+    {
+        $this->timeoutWaitMS = $ms;
     }
 }

@@ -8,12 +8,11 @@
 
 namespace ONS\Transfer;
 
-use ONS\Access\Authorized;
 use ONS\Contract\Transfer;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
 
-class ConnPooled implements Transfer
+class ConnPooled extends AbstractBase implements Transfer
 {
     /**
      * @var int
@@ -140,7 +139,12 @@ class ConnPooled implements Transfer
         {
             if ($this->countBusy < $this->connMax)
             {
-                return call_user_func($this->connInitializer);
+                $newConn = call_user_func($this->connInitializer);
+                if ($newConn instanceof Transfer)
+                {
+                    $newConn->prepareWorks();
+                }
+                return $newConn;
             }
             else
             {
@@ -197,21 +201,5 @@ class ConnPooled implements Transfer
                 $this->sendAsync($data, $callback);
             }
         }
-    }
-
-    /**
-     * @param Authorized $authorized
-     */
-    public function setAuthorized(Authorized $authorized)
-    {
-        // nothing
-    }
-
-    /**
-     * @param $producerID
-     */
-    public function setProducerID($producerID)
-    {
-        // nothing
     }
 }

@@ -23,6 +23,16 @@ interface Transfer
     public function setProducerID($producerID);
 
     /**
+     * @param $ms
+     */
+    public function setTimeoutConnect($ms);
+
+    /**
+     * @param $ms
+     */
+    public function setTimeoutWait($ms);
+
+    /**
      * @return void
      */
     public function prepareWorks();

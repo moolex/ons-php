@@ -41,11 +41,21 @@ class AsyncHTTP extends AbstractBase implements Transfer
     private $usrBuffer = null;
 
     /**
+     * @var int
+     */
+    private $connectTimeoutKiller = null;
+
+    /**
+     * @var int
+     */
+    private $waitTimeoutKiller = null;
+
+    /**
      * Prepare some things before work
      */
     public function prepareWorks()
     {
-        // do nothing
+        $this->initConnection();
     }
 
     /**
@@ -54,13 +64,11 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function sendAsync($data, callable $responseProcessor)
     {
-        $this->initConnection();
         $this->stashCallback($responseProcessor);
 
         if ($this->connected)
         {
-            $this->client->send($this->makeHTTP($data));
-            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
+            $this->doSending($this->makeHTTP($data));
         }
         else
         {
@@ -107,18 +115,17 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     private function initConnection()
     {
-        if (!$this->connected)
-        {
-            $this->client = null;
-            $this->client = new SocketClient(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
+        $this->connected = false;
 
-            $this->client->on('connect', [$this, 'ifConnected']);
-            $this->client->on('receive', [$this, 'ifReceived']);
-            $this->client->on('error', [$this, 'ifError']);
-            $this->client->on('close', [$this, 'ifClosed']);
+        $this->client = null;
+        $this->client = new SocketClient(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
 
-            swoole_async_dns_lookup($this->authorized->getEndpoint(), [$this, 'ifDNSResolved']);
-        }
+        $this->client->on('connect', [$this, 'ifConnected']);
+        $this->client->on('receive', [$this, 'ifReceived']);
+        $this->client->on('error', [$this, 'ifError']);
+        $this->client->on('close', [$this, 'ifClosed']);
+
+        swoole_async_dns_lookup($this->authorized->getEndpoint(), [$this, 'ifDNSResolved']);
     }
 
     /**
@@ -134,12 +141,14 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     private function execCallback($response)
     {
-        if (is_callable($this->usrCallback))
-        {
-            call_user_func_array($this->usrCallback, [$response, $this]);
-        }
+        $processor = $this->usrCallback;
 
         $this->usrCallback = null;
+
+        if (is_callable($processor))
+        {
+            call_user_func_array($processor, [$response, $this]);
+        }
     }
 
     /**
@@ -158,11 +167,80 @@ class AsyncHTTP extends AbstractBase implements Transfer
     {
         if ($this->usrBuffer)
         {
-            $this->client->send($this->usrBuffer);
-            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
+            $this->doSending($this->usrBuffer);
         }
 
         $this->usrBuffer = null;
+    }
+
+    /**
+     * @param $data
+     */
+    private function doSending($data)
+    {
+        $this->setWaitTimeoutKiller();
+        $this->client->send($data);
+        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
+    }
+
+    /**
+     * Add timeout killer for send-wait
+     */
+    private function setWaitTimeoutKiller()
+    {
+        $this->waitTimeoutKiller = swoole_timer_after($this->timeoutWaitMS, [$this, 'ifWaitTimeoutKillerWake']);
+    }
+
+    /**
+     * Add timeout killer for connect-wait
+     */
+    private function setConnectTimeoutKiller()
+    {
+        $this->connectTimeoutKiller = swoole_timer_after($this->timeoutConnectMS, [$this, 'ifConnectTimeoutKillerWake']);
+    }
+
+    /**
+     * Remove timeout killer for send
+     */
+    private function disWaitTimeoutKiller()
+    {
+        swoole_timer_clear($this->waitTimeoutKiller);
+    }
+
+    /**
+     * Remove timeout killer for connect
+     */
+    private function disConnectTimeoutKiller()
+    {
+        swoole_timer_clear($this->connectTimeoutKiller);
+    }
+
+    /**
+     * Reconnect if timeout reached
+     */
+    public function ifConnectTimeoutKillerWake()
+    {
+        Monitor::ctx()->metricIncr(Metrics::NET_CONNECT_TIMEOUT);
+        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
+
+        $this->initConnection();
+
+        $this->execCallback('FAILED: CONNECT TIMEOUT');
+    }
+
+    /**
+     * Reconnect if timeout reached
+     */
+    public function ifWaitTimeoutKillerWake()
+    {
+        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
+
+        if ($this->client->isConnected())
+        {
+            $this->client->close();
+        }
+
+        $this->execCallback('FAILED: WAIT TIMEOUT');
     }
 
     /**
@@ -171,6 +249,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifDNSResolved($host, $ip)
     {
+        $this->setConnectTimeoutKiller();
         $this->client->connect($ip, 80);
     }
 
@@ -179,8 +258,8 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifConnected(SocketClient $client)
     {
+        $this->disConnectTimeoutKiller();
         $this->connected = true;
-        Monitor::ctx()->metricIncr(Metrics::CONN_NETWORK_CONNECTS);
         $this->clearSending();
     }
 
@@ -190,6 +269,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifReceived(SocketClient $client, $data)
     {
+        $this->disWaitTimeoutKiller();
         $this->execCallback($data);
         Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_RESPONSE);
     }
@@ -199,8 +279,6 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifError(SocketClient $client)
     {
-        $this->connected = false;
-        Monitor::ctx()->metricDecr(Metrics::CONN_NETWORK_CONNECTS);
         $this->initConnection();
     }
 
@@ -209,8 +287,6 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifClosed(SocketClient $client)
     {
-        $this->connected = false;
-        Monitor::ctx()->metricDecr(Metrics::CONN_NETWORK_CONNECTS);
         $this->initConnection();
     }
 }

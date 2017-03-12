@@ -28,7 +28,8 @@ trait TableStore
         Metrics::POOL_QUEUE_DROPS,
         Metrics::MSG_FORWARD_SUBMIT,
         Metrics::MSG_FORWARD_RESPONSE,
-        Metrics::CONN_NETWORK_CONNECTS,
+        Metrics::MSG_FORWARD_TIMEOUT,
+        Metrics::NET_CONNECT_TIMEOUT,
     ];
 
     /**

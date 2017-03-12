@@ -17,6 +17,7 @@ class Metrics
 
     const MSG_FORWARD_SUBMIT = 'msg.forward.submit';
     const MSG_FORWARD_RESPONSE = 'msg.forward.response';
+    const MSG_FORWARD_TIMEOUT = 'msg.forward.timeout';
 
-    const CONN_NETWORK_CONNECTS = 'conn.network.connects';
+    const NET_CONNECT_TIMEOUT = 'net.connect.timeout';
 }
