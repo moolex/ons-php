@@ -22,8 +22,13 @@ $transfer->setConnInitializer(function () use ($authorized, $producerID) {
     return $client;
 
 });
-$transfer->setConnMax(Env::get('CONN_MAX'));
+$transfer->setConnMax(Env::get('CONN_MAX', 100));
+$transfer->setQueueMax(Env::get('QUEUE_MAX', 10000));
 
-$server = new \ONS\Relays\UDP(Env::get('LISTEN_ADDRESS'), Env::get('LISTEN_PORT'), $transfer);
+$server = new \ONS\Relays\UDP(
+    Env::get('LISTEN_ADDRESS', '127.0.0.1'),
+    Env::get('LISTEN_PORT', 12333),
+    $transfer
+);
 
 $server->start();

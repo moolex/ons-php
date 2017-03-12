@@ -12,17 +12,18 @@ class Env
 {
     /**
      * @param $name
+     * @param $default
      * @return string
      */
-    public static function get($name)
+    public static function get($name, $default = null)
     {
         $value = getenv($name);
 
-        if (empty($value))
+        if (empty($value) && is_null($default))
         {
             exit('Env key "'.$name.'" is missing');
         }
 
-        return $value;
+        return $value ?: $default;
     }
 }
