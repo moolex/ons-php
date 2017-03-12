@@ -10,6 +10,8 @@ namespace ONS\Transfer;
 
 use ONS\Access\Authorized;
 use ONS\Contract\Transfer;
+use ONS\Monitor\Metrics;
+use ONS\Monitor\Monitor;
 
 class ConnPooled implements Transfer
 {
@@ -32,6 +34,11 @@ class ConnPooled implements Transfer
      * @var array
      */
     private $queueStack = [];
+
+    /**
+     * @var int
+     */
+    private $sendDrops = 0;
 
     /**
      * @var array
@@ -68,6 +75,27 @@ class ConnPooled implements Transfer
     }
 
     /**
+     * Prepare some things before work
+     */
+    public function prepareWorks()
+    {
+        Monitor::ctx()->registerReporter([$this, 'reportMetrics']);
+    }
+
+    /**
+     * Report self stats
+     */
+    public function reportMetrics()
+    {
+        return [
+            Metrics::POOL_CONN_IDLE => count($this->listIdle),
+            Metrics::POOL_CONN_BUSY => $this->countBusy,
+            Metrics::POOL_QUEUE_SIZE => count($this->queueStack),
+            Metrics::POOL_QUEUE_DROPS => $this->sendDrops,
+        ];
+    }
+
+    /**
      * @param $data
      * @param callable $responseProcessor
      */
@@ -87,6 +115,7 @@ class ConnPooled implements Transfer
         {
             if ($this->queueIsFull())
             {
+                $this->sendDrops ++;
                 call_user_func_array($responseProcessor, ['FAILED: CONN BUSY']);
             }
             else
@@ -94,8 +123,6 @@ class ConnPooled implements Transfer
                 $this->queueAppend($data, $responseProcessor);
             }
         }
-
-        var_dump('CONN IS '.count($this->listIdle).'/'.$this->countBusy.' : '.count($this->queueStack));
     }
 
     /**
@@ -186,13 +213,5 @@ class ConnPooled implements Transfer
     public function setProducerID($producerID)
     {
         // nothing
-    }
-
-    /**
-     * @return bool
-     */
-    public function isConnReady()
-    {
-        return true;
     }
 }

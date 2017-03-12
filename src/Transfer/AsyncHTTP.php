@@ -9,6 +9,8 @@
 namespace ONS\Transfer;
 
 use ONS\Contract\Transfer;
+use ONS\Monitor\Metrics;
+use ONS\Monitor\Monitor;
 use swoole_client as SocketClient;
 
 class AsyncHTTP extends AbstractBase implements Transfer
@@ -39,18 +41,26 @@ class AsyncHTTP extends AbstractBase implements Transfer
     private $usrBuffer = null;
 
     /**
+     * Prepare some things before work
+     */
+    public function prepareWorks()
+    {
+        // do nothing
+    }
+
+    /**
      * @param $data
      * @param callable $responseProcessor
      */
     public function sendAsync($data, callable $responseProcessor)
     {
-        $this->setConnBusy();
         $this->initConnection();
         $this->stashCallback($responseProcessor);
 
         if ($this->connected)
         {
             $this->client->send($this->makeHTTP($data));
+            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
         }
         else
         {
@@ -149,6 +159,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
         if ($this->usrBuffer)
         {
             $this->client->send($this->usrBuffer);
+            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
         }
 
         $this->usrBuffer = null;
@@ -169,7 +180,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
     public function ifConnected(SocketClient $client)
     {
         $this->connected = true;
-        $this->setConnIdle();
+        Monitor::ctx()->metricIncr(Metrics::CONN_NETWORK_CONNECTS);
         $this->clearSending();
     }
 
@@ -179,8 +190,8 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifReceived(SocketClient $client, $data)
     {
-        $this->setConnIdle();
         $this->execCallback($data);
+        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_RESPONSE);
     }
 
     /**
@@ -189,6 +200,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
     public function ifError(SocketClient $client)
     {
         $this->connected = false;
+        Monitor::ctx()->metricDecr(Metrics::CONN_NETWORK_CONNECTS);
         $this->initConnection();
     }
 
@@ -198,6 +210,7 @@ class AsyncHTTP extends AbstractBase implements Transfer
     public function ifClosed(SocketClient $client)
     {
         $this->connected = false;
+        Monitor::ctx()->metricDecr(Metrics::CONN_NETWORK_CONNECTS);
         $this->initConnection();
     }
 }

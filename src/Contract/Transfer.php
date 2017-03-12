@@ -23,9 +23,9 @@ interface Transfer
     public function setProducerID($producerID);
 
     /**
-     * @return bool
+     * @return void
      */
-    public function isConnReady();
+    public function prepareWorks();
 
     /**
      * @param $data

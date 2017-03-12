@@ -24,11 +24,6 @@ abstract class AbstractBase implements Transfer
     protected $producerID = '';
 
     /**
-     * @var bool
-     */
-    protected $cIsReady = false;
-
-    /**
      * @param Authorized $authorized
      */
     public function setAuthorized(Authorized $authorized)
@@ -42,29 +37,5 @@ abstract class AbstractBase implements Transfer
     public function setProducerID($producerID)
     {
         $this->producerID = $producerID;
-    }
-
-    /**
-     * @return bool
-     */
-    public function isConnReady()
-    {
-        return $this->cIsReady;
-    }
-
-    /**
-     * Set connection is idle
-     */
-    protected function setConnIdle()
-    {
-        $this->cIsReady = true;
-    }
-
-    /**
-     * Set connection is busy
-     */
-    protected function setConnBusy()
-    {
-        $this->cIsReady = false;
     }
 }

@@ -9,6 +9,7 @@
 namespace ONS\Relays;
 
 use ONS\Contract\Transfer;
+use ONS\Monitor\Monitor;
 use swoole_server as SocketServer;
 
 class UDP
@@ -17,26 +18,39 @@ class UDP
      * Listen host
      * @var string
      */
-    private $lHost = '127.0.0.1';
+    private $listenHost = '127.0.0.1';
 
     /**
      * Listen port
      * @var int
      */
-    private $lPort = 12333;
+    private $listenPort = 12333;
+
+    /**
+     * @var int
+     */
+    private $workersMax = 1;
+
+    /**
+     * @var Transfer
+     */
+    private $transfer = null;
 
     /**
      * UDP server constructor.
      * @param $host
      * @param $port
      * @param Transfer $transfer
+     * @param $workersMax
      */
-    public function __construct($host, $port, Transfer $transfer)
+    public function __construct(Transfer $transfer, $host = '127.0.0.1', $port = 12333, $workersMax = 1)
     {
-        $this->lHost = $host;
-        $this->lPort = $port;
-
         $this->transfer = $transfer;
+
+        $this->listenHost = $host;
+        $this->listenPort = $port;
+
+        $this->workersMax = $workersMax;
     }
 
     /**
@@ -44,11 +58,28 @@ class UDP
      */
     public function start()
     {
-        $server = new SocketServer($this->lHost, $this->lPort, SWOOLE_PROCESS, SWOOLE_SOCK_UDP);
+        $server = new SocketServer($this->listenHost, $this->listenPort, SWOOLE_PROCESS, SWOOLE_SOCK_UDP);
 
+        $server->set([
+            'worker_num' => $this->workersMax,
+            'dispatch_mode' => 3
+        ]);
+
+        $server->on('workerStart', [$this, 'mgrWorkerStart']);
         $server->on('packet', [$this, 'packetIncoming']);
 
+        Monitor::init($this->workersMax);
         $server->start();
+    }
+
+    /**
+     * @param SocketServer $server
+     * @param $workerID
+     */
+    public function mgrWorkerStart(SocketServer $server, $workerID)
+    {
+        Monitor::prepare($workerID);
+        $this->transfer->prepareWorks();
     }
 
     /**

@@ -25,10 +25,13 @@ $transfer->setConnInitializer(function () use ($authorized, $producerID) {
 $transfer->setConnMax(Env::get('CONN_MAX', 100));
 $transfer->setQueueMax(Env::get('QUEUE_MAX', 10000));
 
+\ONS\Monitor\Monitor::setWebAPI(Env::get('API_LISTEN_PORT', 12334));
+
 $server = new \ONS\Relays\UDP(
+    $transfer,
     Env::get('LISTEN_ADDRESS', '127.0.0.1'),
     Env::get('LISTEN_PORT', 12333),
-    $transfer
+    Env::get('WORKER_NUM', 4)
 );
 
 $server->start();
