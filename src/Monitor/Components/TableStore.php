@@ -30,6 +30,8 @@ trait TableStore
         Metrics::MSG_FORWARD_RESPONSE,
         Metrics::MSG_FORWARD_TIMEOUT,
         Metrics::NET_CONNECT_TIMEOUT,
+        Metrics::STATS_CPU_USAGE,
+        Metrics::STATS_MEM_BYTES,
     ];
 
     /**

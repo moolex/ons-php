@@ -20,7 +20,7 @@ trait WorkerProcess
     /**
      * @param $workerID
      */
-    private static function prepareProcessor($workerID)
+    private static function prepareProcessorContext($workerID)
     {
         self::$ctxInstance = new Processor($workerID);
     }

@@ -11,11 +11,13 @@ namespace ONS\Monitor;
 use ONS\Monitor\Components\TableStore;
 use ONS\Monitor\Components\WebAPI;
 use ONS\Monitor\Components\WorkerProcess;
+use ONS\Monitor\Components\WorkerStats;
 
 class Monitor
 {
     use TableStore;
     use WorkerProcess;
+    use WorkerStats;
     use WebAPI;
 
     /**
@@ -31,7 +33,8 @@ class Monitor
      */
     public static function prepare($workerID)
     {
-        self::prepareProcessor($workerID);
+        self::prepareProcessorContext($workerID);
+        self::prepareWorkerMonitor($workerID);
         self::prepareWebAPI($workerID);
     }
 }

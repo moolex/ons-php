@@ -20,4 +20,7 @@ class Metrics
     const MSG_FORWARD_TIMEOUT = 'msg.forward.timeout';
 
     const NET_CONNECT_TIMEOUT = 'net.connect.timeout';
+
+    const STATS_CPU_USAGE = 'stats.cpu.usage';
+    const STATS_MEM_BYTES = 'stats.mem.bytes';
 }
