@@ -1,6 +1,6 @@
 <?php
 
-require 'src/autoload.php';
+require '../vendor/autoload.php';
 
 use ONS\Utils\Env;
 
@@ -13,10 +13,10 @@ $authorized = new \ONS\Access\Authorized(
 
 $producerID = Env::get('ONS_PRODUCER_ID');
 
-$transfer = new \ONS\Transfer\ConnPooled();
+$transfer = new \ONS\Transfer\Pool();
 $transfer->setConnInitializer(function () use ($authorized, $producerID) {
 
-    $client = new \ONS\Transfer\AsyncHTTP();
+    $client = new \ONS\Transfer\HTTP();
     $client->setAuthorized($authorized);
     $client->setProducerID($producerID);
     return $client;
@@ -27,7 +27,7 @@ $transfer->setQueueMax(Env::get('QUEUE_MAX', 10000));
 
 \ONS\Monitor\Monitor::setWebAPI(Env::get('API_LISTEN_PORT', 12334));
 
-$server = new \ONS\Relays\UDP(
+$server = new \ONS\Usage\Relays\UDP(
     $transfer,
     Env::get('LISTEN_ADDRESS', '127.0.0.1'),
     Env::get('LISTEN_PORT', 12333),

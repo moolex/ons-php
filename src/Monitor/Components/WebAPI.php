@@ -9,6 +9,7 @@
 namespace ONS\Monitor\Components;
 
 use ONS\Monitor\Monitor;
+use ONS\Utils\HTT2Proto;
 
 trait WebAPI
 {
@@ -57,7 +58,8 @@ trait WebAPI
             swoole_event_add($listener, function($server) {
                 $accepted = stream_socket_accept($server, 0);
                 swoole_event_add($accepted, function($sock) {
-                    if (null != $request = self::checkHTTPRequest($sock))
+                    $headers = fread($sock, 8192);
+                    if (null != $request = HTT2Proto::parseRequest($headers))
                     {
                         switch ($request['method'].'-'.$request['uri'])
                         {
@@ -94,35 +96,6 @@ trait WebAPI
 
     /**
      * @param resource $sock
-     * @return array|null
-     */
-    private static function checkHTTPRequest($sock)
-    {
-        $header = fread($sock, 8192);
-
-        $firstLine = substr($header, 0, strpos($header, "\n") - 1);
-
-        $HTTPFlag = substr($firstLine, -8);
-        if ($HTTPFlag == 'HTTP/1.1')
-        {
-            $mpEND = strpos($firstLine, ' ');
-
-            $methodName = substr($firstLine, 0, $mpEND);
-            $requestURI = substr($firstLine, $mpEND + 1, -9);
-
-            return [
-                'method' => $methodName,
-                'uri' => $requestURI,
-            ];
-        }
-        else
-        {
-            return null;
-        }
-    }
-
-    /**
-     * @param resource $sock
      * @param $data
      * @param string $type
      * @param int $code
@@ -132,14 +105,14 @@ trait WebAPI
         $size = strlen($data);
 
         $buffer =
-            "HTTP/1.1 {$code}\n".
-            "Server: ONS forwarder\n".
-            "Content-Type: {$type}\n".
-            "Content-Length: {$size}\n".
-            "Connection: close\n".
-            "\n".
+            "HTTP/1.1 {$code}\r\n".
+            "Server: ONS-PHP Monitor\r\n".
+            "Content-Type: {$type}\r\n".
+            "Content-Length: {$size}\r\n".
+            "Connection: close\r\n".
+            "\r\n".
             $data
-            ;
+        ;
 
         fwrite($sock, $buffer);
     }

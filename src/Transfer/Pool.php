@@ -12,7 +12,7 @@ use ONS\Contract\Transfer;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
 
-class ConnPooled extends AbstractBase implements Transfer
+class Pool extends AbstractBase implements Transfer
 {
     /**
      * @var int
@@ -98,13 +98,13 @@ class ConnPooled extends AbstractBase implements Transfer
      * @param $data
      * @param callable $responseProcessor
      */
-    public function sendAsync($data, callable $responseProcessor)
+    public function publish($data, callable $responseProcessor)
     {
         $transfer = $this->getIdleConn();
         if ($transfer)
         {
             $this->setConnBusy();
-            $transfer->sendAsync($data, function () use ($transfer, $responseProcessor) {
+            $transfer->publish($data, function () use ($transfer, $responseProcessor) {
                 $this->setIdleConn($transfer);
                 call_user_func_array($responseProcessor, func_get_args());
                 $this->queueChecks();
@@ -121,6 +121,18 @@ class ConnPooled extends AbstractBase implements Transfer
             {
                 $this->queueAppend($data, $responseProcessor);
             }
+        }
+    }
+
+    /**
+     * @param callable $messageProcessor
+     */
+    public function subscribe(callable $messageProcessor)
+    {
+        while (null != $transfer = $this->getIdleConn())
+        {
+            $this->setConnBusy();
+            $transfer->subscribe($messageProcessor);
         }
     }
 
@@ -198,7 +210,7 @@ class ConnPooled extends AbstractBase implements Transfer
             list($data, $callback) = array_shift($this->queueStack);
             if (is_callable($callback))
             {
-                $this->sendAsync($data, $callback);
+                $this->publish($data, $callback);
             }
         }
     }

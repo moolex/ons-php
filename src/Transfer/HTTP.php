@@ -11,14 +11,22 @@ namespace ONS\Transfer;
 use ONS\Contract\Transfer;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
+use ONS\Wire\HTTP as Wire;
+use ONS\Wire\Message;
+use ONS\Wire\Results\Messages as ResultMessages;
 use swoole_client as SocketClient;
 
-class AsyncHTTP extends AbstractBase implements Transfer
+class HTTP extends AbstractBase implements Transfer
 {
     /**
      * @var string
      */
-    private $userAgent = 'relay2ons:async-http/1.0';
+    private $userAgent = 'ons-php:async-http/1.0';
+
+    /**
+     * @var Wire
+     */
+    private $wire = null;
 
     /**
      * @var bool
@@ -34,6 +42,11 @@ class AsyncHTTP extends AbstractBase implements Transfer
      * @var callable
      */
     private $usrCallback = null;
+
+    /**
+     * @var callable
+     */
+    private $msgCallback = null;
 
     /**
      * @var string
@@ -55,6 +68,8 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function prepareWorks()
     {
+        $this->wire = new Wire($this->authorized, $this->userAgent);
+
         $this->initConnection();
     }
 
@@ -62,52 +77,52 @@ class AsyncHTTP extends AbstractBase implements Transfer
      * @param $data
      * @param callable $responseProcessor
      */
-    public function sendAsync($data, callable $responseProcessor)
+    public function publish($data, callable $responseProcessor)
     {
         $this->stashCallback($responseProcessor);
 
         if ($this->connected)
         {
-            $this->doSending($this->makeHTTP($data));
+            $this->doSending($this->wire->publish($this->producerID, $data));
         }
         else
         {
-            $this->waitSending($this->makeHTTP($data));
+            $this->waitSending($this->wire->publish($this->producerID, $data));
         }
     }
 
     /**
-     * Generate HTTP Data
-     * @param $payload
-     * @return string
+     * @param callable $messageProcessor
      */
-    private function makeHTTP($payload)
+    public function subscribe(callable $messageProcessor)
     {
-        $topic = $this->authorized->getTopic();
+        $this->msgCallback = $messageProcessor;
+        $this->stashCallback([$this, 'msgInsGenerator']);
 
-        $date = (int)(microtime(true) * 1000);
+        if ($this->connected)
+        {
+            $this->doSending($this->wire->subscribe($this->consumerID));
+        }
+        else
+        {
+            $this->waitSending($this->wire->subscribe($this->consumerID));
+        }
+    }
 
-        $hash = md5($payload);
-        $sample = "{$topic}\n{$this->producerID}\n{$hash}\n{$date}";
-        $sign = base64_encode(hash_hmac('sha1', $sample, $this->authorized->getKeySecret(), true));
-
-        $postSize = strlen($payload);
-
-        $data =
-            "POST /message/?topic={$topic}&time={$date}&tag=http&key=http HTTP/1.1\n".
-            "Host: {$this->authorized->getEndpoint()}\n".
-            "User-Agent: {$this->userAgent}\n".
-            "AccessKey: {$this->authorized->getKeyID()}\n".
-            "ProducerID: {$this->producerID}\n".
-            "Signature: {$sign}\n".
-            "Content-Type: text/html;charset=UTF-8\n".
-            "Content-Length: {$postSize}\n".
-            "Connection: keep-alive\n".
-            "\n".
-            "{$payload}"
-            ;
-
-        return $data;
+    /**
+     * @param $response
+     */
+    private function msgInsGenerator($response)
+    {
+        $result = $this->wire->result($response);
+        if ($result instanceof ResultMessages)
+        {
+            $messages = $result->gets();
+            foreach ($messages as $message)
+            {
+                call_user_func_array($this->msgCallback, [new Message($message)]);
+            }
+        }
     }
 
     /**
@@ -143,7 +158,11 @@ class AsyncHTTP extends AbstractBase implements Transfer
     {
         $processor = $this->usrCallback;
 
-        $this->usrCallback = null;
+        if (empty($this->msgCallback))
+        {
+            // clear usr callback in publish mode
+            $this->usrCallback = null;
+        }
 
         if (is_callable($processor))
         {
@@ -249,8 +268,15 @@ class AsyncHTTP extends AbstractBase implements Transfer
      */
     public function ifDNSResolved($host, $ip)
     {
-        $this->setConnectTimeoutKiller();
-        $this->client->connect($ip, 80);
+        if (filter_var($ip, FILTER_VALIDATE_IP))
+        {
+            $this->setConnectTimeoutKiller();
+            $this->client->connect($ip, 80);
+        }
+        else
+        {
+            $this->initConnection();
+        }
     }
 
     /**

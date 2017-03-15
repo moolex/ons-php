@@ -23,6 +23,11 @@ interface Transfer
     public function setProducerID($producerID);
 
     /**
+     * @param $consumerID
+     */
+    public function setConsumerID($consumerID);
+
+    /**
      * @param $ms
      */
     public function setTimeoutConnect($ms);
@@ -41,5 +46,10 @@ interface Transfer
      * @param $data
      * @param callable $responseProcessor
      */
-    public function sendAsync($data, callable $responseProcessor);
+    public function publish($data, callable $responseProcessor);
+
+    /**
+     * @param callable $messageProcessor
+     */
+    public function subscribe(callable $messageProcessor);
 }

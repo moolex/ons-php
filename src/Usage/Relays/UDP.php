@@ -6,7 +6,7 @@
  * Time: 12:17 PM
  */
 
-namespace ONS\Relays;
+namespace ONS\Usage\Relays;
 
 use ONS\Contract\Transfer;
 use ONS\Monitor\Monitor;
@@ -90,7 +90,7 @@ class UDP
      */
     public function packetIncoming(SocketServer $server, $data, array $client)
     {
-        $this->transfer->sendAsync($data, [$this, 'resultBlackhole']);
+        $this->transfer->publish($data, [$this, 'resultBlackhole']);
     }
 
     /**
