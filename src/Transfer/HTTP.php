@@ -11,6 +11,7 @@ namespace ONS\Transfer;
 use ONS\Contract\Transfer;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
+use ONS\Utils\HTT2Proto;
 use ONS\Wire\HTTP as Wire;
 use ONS\Wire\Message;
 use ONS\Wire\Results\Messages as ResultMessages;
@@ -31,7 +32,17 @@ class HTTP extends AbstractBase implements Transfer
     /**
      * @var bool
      */
+    private $consuming = false;
+
+    /**
+     * @var bool
+     */
     private $connected = false;
+
+    /**
+     * @var int
+     */
+    private $reconnects = 0;
 
     /**
      * @var SocketClient;
@@ -64,6 +75,26 @@ class HTTP extends AbstractBase implements Transfer
     private $waitTimeoutKiller = null;
 
     /**
+     * @var bool
+     */
+    private $recvIsWaiting = false;
+
+    /**
+     * @var int
+     */
+    private $recvExpectSize = 0;
+
+    /**
+     * @var int
+     */
+    private $recvFoundSize = 0;
+
+    /**
+     * @var string
+     */
+    private $recvBuffer = '';
+
+    /**
      * Prepare some things before work
      */
     public function prepareWorks()
@@ -79,7 +110,7 @@ class HTTP extends AbstractBase implements Transfer
      */
     public function publish($data, callable $responseProcessor)
     {
-        $this->stashCallback($responseProcessor);
+        $this->stashUsrCallback($responseProcessor);
 
         if ($this->connected)
         {
@@ -87,7 +118,7 @@ class HTTP extends AbstractBase implements Transfer
         }
         else
         {
-            $this->waitSending($this->wire->publish($this->producerID, $data));
+            $this->setWaitingBuffer($this->wire->publish($this->producerID, $data));
         }
     }
 
@@ -96,16 +127,25 @@ class HTTP extends AbstractBase implements Transfer
      */
     public function subscribe(callable $messageProcessor)
     {
-        $this->msgCallback = $messageProcessor;
-        $this->stashCallback([$this, 'msgInsGenerator']);
+        $this->stashMsgCallback($messageProcessor);
 
+        $this->consuming = true;
+
+        $this->msgLoopingTick();
+    }
+
+    /**
+     * Tick msg looping
+     */
+    private function msgLoopingTick()
+    {
         if ($this->connected)
         {
             $this->doSending($this->wire->subscribe($this->consumerID));
         }
         else
         {
-            $this->waitSending($this->wire->subscribe($this->consumerID));
+            $this->setWaitingBuffer($this->wire->subscribe($this->consumerID));
         }
     }
 
@@ -122,6 +162,17 @@ class HTTP extends AbstractBase implements Transfer
             {
                 call_user_func_array($this->msgCallback, [new Message($message)]);
             }
+
+            if (empty($messages))
+            {
+                swoole_timer_after($this->timeoutPollMS, function () {
+                    $this->msgLoopingTick();
+                });
+            }
+            else
+            {
+                $this->msgLoopingTick();
+            }
         }
     }
 
@@ -130,6 +181,8 @@ class HTTP extends AbstractBase implements Transfer
      */
     private function initConnection()
     {
+        $this->connected && $this->reconnects ++;
+
         $this->connected = false;
 
         $this->client = null;
@@ -146,23 +199,27 @@ class HTTP extends AbstractBase implements Transfer
     /**
      * @param callable $callback
      */
-    private function stashCallback(callable $callback)
+    private function stashUsrCallback(callable $callback)
     {
         $this->usrCallback = $callback;
     }
 
     /**
+     * @param callable $callback
+     */
+    private function stashMsgCallback(callable $callback)
+    {
+        $this->msgCallback = $callback;
+    }
+
+    /**
      * @param $response
      */
-    private function execCallback($response)
+    private function execUsrCallback($response)
     {
         $processor = $this->usrCallback;
 
-        if (empty($this->msgCallback))
-        {
-            // clear usr callback in publish mode
-            $this->usrCallback = null;
-        }
+        $this->usrCallback = null;
 
         if (is_callable($processor))
         {
@@ -171,22 +228,29 @@ class HTTP extends AbstractBase implements Transfer
     }
 
     /**
-     * Wait next sending
+     * Set waiting buffer for next send if we connected
      * @param $buffer
      */
-    private function waitSending($buffer)
+    private function setWaitingBuffer($buffer)
     {
         $this->usrBuffer = $buffer;
     }
 
     /**
-     * Check and send now
+     * Check and send local buffer to network
      */
-    private function clearSending()
+    private function clsWaitingBuffer()
     {
         if ($this->usrBuffer)
         {
             $this->doSending($this->usrBuffer);
+        }
+        else
+        {
+            if ($this->consuming && $this->reconnects)
+            {
+                $this->msgLoopingTick();
+            }
         }
 
         $this->usrBuffer = null;
@@ -244,7 +308,7 @@ class HTTP extends AbstractBase implements Transfer
 
         $this->initConnection();
 
-        $this->execCallback('FAILED: CONNECT TIMEOUT');
+        $this->execUsrCallback('FAILED: CONNECT TIMEOUT');
     }
 
     /**
@@ -259,7 +323,7 @@ class HTTP extends AbstractBase implements Transfer
             $this->client->close();
         }
 
-        $this->execCallback('FAILED: WAIT TIMEOUT');
+        $this->execUsrCallback('FAILED: WAIT TIMEOUT');
     }
 
     /**
@@ -286,7 +350,7 @@ class HTTP extends AbstractBase implements Transfer
     {
         $this->disConnectTimeoutKiller();
         $this->connected = true;
-        $this->clearSending();
+        $this->clsWaitingBuffer();
     }
 
     /**
@@ -295,9 +359,49 @@ class HTTP extends AbstractBase implements Transfer
      */
     public function ifReceived(SocketClient $client, $data)
     {
-        $this->disWaitTimeoutKiller();
-        $this->execCallback($data);
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_RESPONSE);
+        $recvDONE = false;
+        $recvDATA = '';
+        if ($this->recvIsWaiting)
+        {
+            $this->recvBuffer .= $data;
+            $this->recvFoundSize += strlen($data);
+
+            if ($this->recvFoundSize >= $this->recvExpectSize)
+            {
+                $recvDONE = true;
+                $recvDATA = $this->recvBuffer;
+
+                $this->recvIsWaiting = false;
+            }
+        }
+        else
+        {
+            $this->disWaitTimeoutKiller();
+
+            $parsed = HTT2Proto::parseResponse($data);
+            if (is_array($parsed))
+            {
+                if ($parsed['size'] <= strlen($parsed['body']))
+                {
+                    $recvDONE = true;
+                    $recvDATA = $data;
+                }
+                else
+                {
+                    $this->recvIsWaiting = true;
+                    $this->recvExpectSize = $parsed['size'];
+                    $this->recvFoundSize = strlen($parsed['body']);
+                    $this->recvBuffer = $data;
+                }
+            }
+        }
+
+        if ($recvDONE)
+        {
+            $this->consuming ? $this->msgInsGenerator($recvDATA) : $this->execUsrCallback($recvDATA);
+
+            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_RESPONSE);
+        }
     }
 
     /**

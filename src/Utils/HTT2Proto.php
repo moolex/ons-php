@@ -16,7 +16,7 @@ class HTT2Proto
      */
     public static function parseRequest($raw)
     {
-        $firstLine = substr($raw, 0, strpos($raw, "\r\n") - 1);
+        $firstLine = substr($raw, 0, strpos($raw, "\r\n"));
 
         $HTTPFlag = substr($firstLine, -8);
         if ($HTTPFlag == 'HTTP/1.1')
@@ -63,7 +63,7 @@ class HTT2Proto
                 $length = (int)trim(substr($raw, $lpBGN, $lpLEN));
             }
 
-            $body = null;
+            $body = '';
             if ($length)
             {
                 $plBGN = strpos($raw, "\r\n\r\n");
@@ -73,6 +73,7 @@ class HTT2Proto
             return [
                 'code' => $code,
                 'msg' => $msg,
+                'size' => $length,
                 'body' => $body
             ];
         }

@@ -73,9 +73,10 @@ class HTTP
 
     /**
      * @param $consumerID
+     * @param $fetchSize
      * @return string
      */
-    public function subscribe($consumerID)
+    public function subscribe($consumerID, $fetchSize = 128)
     {
         $date = $this->genMSTime();
 
@@ -83,7 +84,7 @@ class HTTP
 
         return $this->genHTTP(
             'GET',
-            ['time' => $date],
+            ['time' => $date, 'num' => $fetchSize],
             $this->genSign($sample),
             $consumerID
         );

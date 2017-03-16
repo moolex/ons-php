@@ -39,6 +39,11 @@ abstract class AbstractBase implements Transfer
     protected $timeoutWaitMS = 1000;
 
     /**
+     * @var int
+     */
+    protected $timeoutPollMS = 500;
+
+    /**
      * @param Authorized $authorized
      */
     public function setAuthorized(Authorized $authorized)
