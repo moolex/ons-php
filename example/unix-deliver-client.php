@@ -17,6 +17,8 @@ $consumerID = Env::get('ONS_CONSUMER_ID');
 
 $consumer = new \ONS\Usage\Consumer($authorized, $consumerID);
 
-$consumer->listen(function (\ONS\Contract\Message $message) {
-    echo $message->getID(), "\n";
+$deliver = new \ONS\Usage\Relays\Deliver\Client($consumer, Env::get('UNIX_DOMAIN', '/tmp/deliver.sock'));
+
+$consumer->listen(function (\ONS\Contract\Message $message) use ($deliver) {
+    $deliver->forward($message);
 });

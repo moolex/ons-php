@@ -9,6 +9,7 @@
 namespace ONS\Wire;
 
 use ONS\Access\Authorized;
+use ONS\Exception\InvalidMethodArgsException;
 use ONS\Utils\HTT2Proto;
 
 class HTTP
@@ -103,7 +104,7 @@ class HTTP
 
         return $this->genHTTP(
             'DELETE',
-            ['time' => $date, 'msghandle' => $handle],
+            ['time' => $date, 'msgHandle' => $handle],
             $this->genSign($sample),
             $consumerID
         );
@@ -111,11 +112,27 @@ class HTTP
 
     /**
      * @param $raw
-     * @return Results\Messages | bool | null
+     * @return Results\Messages | Results\Timeout | bool | null
      */
     public function result($raw)
     {
-        $parsed = HTT2Proto::parseResponse($raw);
+        if (is_string($raw))
+        {
+            $parsed = HTT2Proto::parseResponse($raw);
+        }
+        else if (is_array($raw))
+        {
+            $parsed = $raw;
+        }
+        else if (is_numeric($raw))
+        {
+            $parsed = ['code' => $raw, 'body' => null];
+        }
+        else
+        {
+            throw new InvalidMethodArgsException;
+        }
+
         if (is_array($parsed) && isset($parsed['code']))
         {
             switch ($parsed['code'])
@@ -128,6 +145,9 @@ class HTTP
                     break;
                 case 204:
                     return true;
+                    break;
+                case 504:
+                    return new Results\Timeout($parsed['body']);
                     break;
             }
         }

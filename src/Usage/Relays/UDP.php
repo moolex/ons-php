@@ -8,8 +8,8 @@
 
 namespace ONS\Usage\Relays;
 
-use ONS\Contract\Transfer;
 use ONS\Monitor\Monitor;
+use ONS\Usage\Producer;
 use swoole_server as SocketServer;
 
 class UDP
@@ -32,20 +32,20 @@ class UDP
     private $workersMax = 1;
 
     /**
-     * @var Transfer
+     * @var Producer
      */
-    private $transfer = null;
+    private $producer = null;
 
     /**
      * UDP server constructor.
-     * @param $host
-     * @param $port
-     * @param Transfer $transfer
-     * @param $workersMax
+     * @param Producer $producer
+     * @param string $host
+     * @param int $port
+     * @param int $workersMax
      */
-    public function __construct(Transfer $transfer, $host = '127.0.0.1', $port = 12333, $workersMax = 1)
+    public function __construct(Producer $producer, $host = '127.0.0.1', $port = 12333, $workersMax = 1)
     {
-        $this->transfer = $transfer;
+        $this->producer = $producer;
 
         $this->listenHost = $host;
         $this->listenPort = $port;
@@ -79,7 +79,7 @@ class UDP
     public function mgrWorkerStart(SocketServer $server, $workerID)
     {
         Monitor::prepare($workerID);
-        $this->transfer->prepareWorks();
+        $this->producer->prepareWorks();
     }
 
     /**
@@ -90,7 +90,7 @@ class UDP
      */
     public function packetIncoming(SocketServer $server, $data, array $client)
     {
-        $this->transfer->publish($data, [$this, 'resultBlackhole']);
+        $this->producer->publish($data, [$this, 'resultBlackhole']);
     }
 
     /**

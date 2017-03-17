@@ -8,16 +8,17 @@
 
 namespace ONS\Transfer;
 
-use ONS\Contract\Transfer;
+use ONS\Contract\Message;
+use ONS\Contract\Transfer\Queue;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
 
-class Pool extends AbstractBase implements Transfer
+class Pool implements Queue
 {
     /**
      * @var int
      */
-    private $connMax = 10;
+    private $connMax = 1;
 
     /**
      * @var callable
@@ -96,32 +97,11 @@ class Pool extends AbstractBase implements Transfer
 
     /**
      * @param $data
-     * @param callable $responseProcessor
+     * @param callable $resultProcessor
      */
-    public function publish($data, callable $responseProcessor)
+    public function publish($data, callable $resultProcessor)
     {
-        $transfer = $this->getIdleConn();
-        if ($transfer)
-        {
-            $this->setConnBusy();
-            $transfer->publish($data, function () use ($transfer, $responseProcessor) {
-                $this->setIdleConn($transfer);
-                call_user_func_array($responseProcessor, func_get_args());
-                $this->queueChecks();
-            });
-        }
-        else
-        {
-            if ($this->queueIsFull())
-            {
-                $this->sendDrops ++;
-                call_user_func_array($responseProcessor, ['FAILED: CONN BUSY']);
-            }
-            else
-            {
-                $this->queueAppend($data, $responseProcessor);
-            }
-        }
+        $this->commonWrite('publish', $data, $resultProcessor);
     }
 
     /**
@@ -137,8 +117,57 @@ class Pool extends AbstractBase implements Transfer
     }
 
     /**
+     * @param $handle
+     * @param callable $resultProcessor
+     */
+    public function delete($handle, callable $resultProcessor)
+    {
+        $this->commonWrite('delete', $handle, $resultProcessor);
+    }
+
+    /**
+     * @param Message $message
+     * @param callable $resultProcessor
+     */
+    public function forward(Message $message, callable $resultProcessor)
+    {
+        $this->commonWrite('forward', $message, $resultProcessor);
+    }
+
+    /**
+     * @param $method
+     * @param $payload
+     * @param callable $resultProcessor
+     */
+    private function commonWrite($method, $payload, callable $resultProcessor)
+    {
+        $transfer = $this->getIdleConn();
+        if ($transfer)
+        {
+            $this->setConnBusy();
+            $transfer->$method($payload, function () use ($transfer, $resultProcessor) {
+                $this->setIdleConn($transfer);
+                call_user_func_array($resultProcessor, func_get_args());
+                $this->queueChecks();
+            });
+        }
+        else
+        {
+            if ($this->queueIsFull())
+            {
+                $this->sendDrops ++;
+                call_user_func_array($resultProcessor, [null]);
+            }
+            else
+            {
+                $this->queueAppend($method, $payload, $resultProcessor);
+            }
+        }
+    }
+
+    /**
      * Fetch out conn from idle pool
-     * @return Transfer
+     * @return Queue
      */
     private function getIdleConn()
     {
@@ -152,7 +181,7 @@ class Pool extends AbstractBase implements Transfer
             if ($this->countBusy < $this->connMax)
             {
                 $newConn = call_user_func($this->connInitializer);
-                if ($newConn instanceof Transfer)
+                if ($newConn instanceof Queue)
                 {
                     $newConn->prepareWorks();
                 }
@@ -167,9 +196,9 @@ class Pool extends AbstractBase implements Transfer
 
     /**
      * Put back conn to idle pool
-     * @param Transfer $conn
+     * @param Queue $conn
      */
-    private function setIdleConn(Transfer $conn)
+    private function setIdleConn(Queue $conn)
     {
         array_unshift($this->listIdle, $conn);
         $this->countBusy --;
@@ -192,12 +221,13 @@ class Pool extends AbstractBase implements Transfer
     }
 
     /**
-     * @param $data
+     * @param $method
+     * @param $payload
      * @param $callback
      */
-    private function queueAppend($data, $callback)
+    private function queueAppend($method, $payload, $callback)
     {
-        array_push($this->queueStack, [$data, $callback]);
+        array_push($this->queueStack, [$method, $payload, $callback]);
     }
 
     /**
@@ -207,10 +237,10 @@ class Pool extends AbstractBase implements Transfer
     {
         if ($this->queueStack)
         {
-            list($data, $callback) = array_shift($this->queueStack);
+            list($method, $payload, $callback) = array_shift($this->queueStack);
             if (is_callable($callback))
             {
-                $this->publish($data, $callback);
+                $this->$method($payload, $callback);
             }
         }
     }

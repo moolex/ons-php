@@ -56,4 +56,15 @@ interface Message
      * @return bool
      */
     public function makeDone();
+
+    /**
+     * @return string
+     */
+    public function serializePack();
+
+    /**
+     * @param $data
+     * @return static
+     */
+    public static function serializeUnpack($data);
 }

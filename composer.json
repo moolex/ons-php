@@ -2,7 +2,8 @@
   "name": "qmtv/ons-php",
   "require": {
     "php": ">=7",
-    "ext-swoole": ">=2"
+    "ext-swoole": ">=2",
+    "ext-msgpack": ">=2"
   },
   "autoload": {
     "psr-4": {

@@ -1,16 +1,16 @@
 <?php
 /**
- * Transfer interface
+ * Transfer property
  * User: moyo
- * Date: 10/03/2017
- * Time: 2:30 PM
+ * Date: 16/03/2017
+ * Time: 4:34 PM
  */
 
-namespace ONS\Contract;
+namespace ONS\Contract\Transfer;
 
 use ONS\Access\Authorized;
 
-interface Transfer
+interface Property
 {
     /**
      * @param Authorized $authorized
@@ -38,18 +38,12 @@ interface Transfer
     public function setTimeoutWait($ms);
 
     /**
-     * @return void
+     * @param $ms
      */
-    public function prepareWorks();
+    public function setReconnectWait($ms);
 
     /**
-     * @param $data
-     * @param callable $responseProcessor
+     * @param $ms
      */
-    public function publish($data, callable $responseProcessor);
-
-    /**
-     * @param callable $messageProcessor
-     */
-    public function subscribe(callable $messageProcessor);
+    public function setIntervalPoll($ms);
 }

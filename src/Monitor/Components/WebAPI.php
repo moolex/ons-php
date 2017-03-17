@@ -73,6 +73,7 @@ trait WebAPI
                                 self::sendHTTPResponse($sock, 'REQUEST NOT FOUND', 'text/html', 404);
                         }
                     }
+                    swoole_event_del($sock);
                     fclose($sock);
                 });
             });

@@ -43,11 +43,18 @@ class Message implements MSGInterface
     private $delayMS = 0;
 
     /**
+     * @var mixed
+     */
+    private $rawMSG = null;
+
+    /**
      * Message constructor.
      * @param $message
      */
     public function __construct($message)
     {
+        $this->rawMSG = $message;
+
         $this->id = $message['msgId'];
         $this->handle = $message['msgHandle'];
         $this->genTime = $message['bornTime'];
@@ -129,5 +136,22 @@ class Message implements MSGInterface
     public function makeDone()
     {
         return false;
+    }
+
+    /**
+     * @return string
+     */
+    public function serializePack()
+    {
+        return msgpack_pack($this->rawMSG);
+    }
+
+    /**
+     * @param $data
+     * @return static
+     */
+    public static function serializeUnpack($data)
+    {
+        return new static(msgpack_unpack($data));
     }
 }

@@ -1,17 +1,17 @@
 <?php
 /**
- * Abstract base for transfer
+ * Base property set
  * User: moyo
- * Date: 10/03/2017
- * Time: 3:21 PM
+ * Date: 16/03/2017
+ * Time: 4:03 PM
  */
 
-namespace ONS\Transfer;
+namespace ONS\Transfer\Components;
 
 use ONS\Access\Authorized;
-use ONS\Contract\Transfer;
+use ONS\Contract\Transfer\Property;
 
-abstract class AbstractBase implements Transfer
+abstract class PropertySet implements Property
 {
     /**
      * @var Authorized
@@ -41,12 +41,17 @@ abstract class AbstractBase implements Transfer
     /**
      * @var int
      */
-    protected $timeoutPollMS = 500;
+    protected $reconnectWaitMS = 1500;
+
+    /**
+     * @var int
+     */
+    protected $intervalPollMS = 500;
 
     /**
      * @param Authorized $authorized
      */
-    public function setAuthorized(Authorized $authorized)
+    final public function setAuthorized(Authorized $authorized)
     {
         $this->authorized = $authorized;
     }
@@ -54,7 +59,7 @@ abstract class AbstractBase implements Transfer
     /**
      * @param $producerID
      */
-    public function setProducerID($producerID)
+    final public function setProducerID($producerID)
     {
         $this->producerID = $producerID;
     }
@@ -62,7 +67,7 @@ abstract class AbstractBase implements Transfer
     /**
      * @param $consumerID
      */
-    public function setConsumerID($consumerID)
+    final public function setConsumerID($consumerID)
     {
         $this->consumerID = $consumerID;
     }
@@ -70,7 +75,7 @@ abstract class AbstractBase implements Transfer
     /**
      * @param $ms
      */
-    public function setTimeoutConnect($ms)
+    final public function setTimeoutConnect($ms)
     {
         $this->timeoutConnectMS = $ms;
     }
@@ -78,8 +83,24 @@ abstract class AbstractBase implements Transfer
     /**
      * @param $ms
      */
-    public function setTimeoutWait($ms)
+    final public function setTimeoutWait($ms)
     {
         $this->timeoutWaitMS = $ms;
+    }
+
+    /**
+     * @param $ms
+     */
+    final public function setReconnectWait($ms)
+    {
+        $this->reconnectWaitMS = $ms;
+    }
+
+    /**
+     * @param $ms
+     */
+    final public function setIntervalPoll($ms)
+    {
+        $this->intervalPollMS = $ms;
     }
 }

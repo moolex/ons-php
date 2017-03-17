@@ -8,16 +8,17 @@
 
 namespace ONS\Transfer;
 
-use ONS\Contract\Transfer;
+use ONS\Contract\Transfer\Property;
+use ONS\Contract\Transfer\Queue;
+use ONS\Exception\QueueFeatureNotSupportException;
 use ONS\Monitor\Metrics;
 use ONS\Monitor\Monitor;
 use ONS\Utils\HTT2Proto;
 use ONS\Wire\HTTP as Wire;
 use ONS\Wire\Message;
 use ONS\Wire\Results\Messages as ResultMessages;
-use swoole_client as SocketClient;
 
-class HTTP extends AbstractBase implements Transfer
+class HTTP extends Base implements Property, Queue
 {
     /**
      * @var string
@@ -35,44 +36,9 @@ class HTTP extends AbstractBase implements Transfer
     private $consuming = false;
 
     /**
-     * @var bool
-     */
-    private $connected = false;
-
-    /**
-     * @var int
-     */
-    private $reconnects = 0;
-
-    /**
-     * @var SocketClient;
-     */
-    private $client = null;
-
-    /**
-     * @var callable
-     */
-    private $usrCallback = null;
-
-    /**
      * @var callable
      */
     private $msgCallback = null;
-
-    /**
-     * @var string
-     */
-    private $usrBuffer = null;
-
-    /**
-     * @var int
-     */
-    private $connectTimeoutKiller = null;
-
-    /**
-     * @var int
-     */
-    private $waitTimeoutKiller = null;
 
     /**
      * @var bool
@@ -101,25 +67,20 @@ class HTTP extends AbstractBase implements Transfer
     {
         $this->wire = new Wire($this->authorized, $this->userAgent);
 
+        $this->connTarget = $this->authorized->getEndpoint();
+        $this->connType = SWOOLE_SOCK_TCP;
+        $this->connAsync = SWOOLE_SOCK_ASYNC;
+
         $this->initConnection();
     }
 
     /**
      * @param $data
-     * @param callable $responseProcessor
+     * @param callable $resultProcessor
      */
-    public function publish($data, callable $responseProcessor)
+    public function publish($data, callable $resultProcessor)
     {
-        $this->stashUsrCallback($responseProcessor);
-
-        if ($this->connected)
-        {
-            $this->doSending($this->wire->publish($this->producerID, $data));
-        }
-        else
-        {
-            $this->setWaitingBuffer($this->wire->publish($this->producerID, $data));
-        }
+        $this->trySending($resultProcessor, $this->wire->publish($this->producerID, $data));
     }
 
     /**
@@ -127,7 +88,7 @@ class HTTP extends AbstractBase implements Transfer
      */
     public function subscribe(callable $messageProcessor)
     {
-        $this->stashMsgCallback($messageProcessor);
+        $this->msgCallback = $messageProcessor;
 
         $this->consuming = true;
 
@@ -135,18 +96,41 @@ class HTTP extends AbstractBase implements Transfer
     }
 
     /**
+     * @param $handle
+     * @param callable $resultProcessor
+     */
+    public function delete($handle, callable $resultProcessor)
+    {
+        $this->trySending($resultProcessor, $this->wire->delete($this->consumerID, $handle));
+    }
+
+    /**
+     * NOT SUPPORT FOR HTTP
+     * @param \ONS\Contract\Message $message
+     * @param callable $resultProcessor
+     */
+    public function forward(\ONS\Contract\Message $message, callable $resultProcessor)
+    {
+        throw new QueueFeatureNotSupportException;
+    }
+
+    /**
+     * @param callable $usrCallback
+     * @param $buffer
+     */
+    private function trySending(callable $usrCallback, $buffer)
+    {
+        $this->stashUsrCallback($usrCallback);
+        $this->connected ? $this->doSending($buffer) : $this->setWaitingBuffer($buffer);
+    }
+
+    /**
      * Tick msg looping
      */
     private function msgLoopingTick()
     {
-        if ($this->connected)
-        {
-            $this->doSending($this->wire->subscribe($this->consumerID));
-        }
-        else
-        {
-            $this->setWaitingBuffer($this->wire->subscribe($this->consumerID));
-        }
+        $query = $this->wire->subscribe($this->consumerID);
+        $this->connected ? $this->doSending($query) : $this->setWaitingBuffer($query);
     }
 
     /**
@@ -165,7 +149,7 @@ class HTTP extends AbstractBase implements Transfer
 
             if (empty($messages))
             {
-                swoole_timer_after($this->timeoutPollMS, function () {
+                swoole_timer_after($this->intervalPollMS, function () {
                     $this->msgLoopingTick();
                 });
             }
@@ -177,187 +161,10 @@ class HTTP extends AbstractBase implements Transfer
     }
 
     /**
-     * Check and init connection
-     */
-    private function initConnection()
-    {
-        $this->connected && $this->reconnects ++;
-
-        $this->connected = false;
-
-        $this->client = null;
-        $this->client = new SocketClient(SWOOLE_SOCK_TCP, SWOOLE_SOCK_ASYNC);
-
-        $this->client->on('connect', [$this, 'ifConnected']);
-        $this->client->on('receive', [$this, 'ifReceived']);
-        $this->client->on('error', [$this, 'ifError']);
-        $this->client->on('close', [$this, 'ifClosed']);
-
-        swoole_async_dns_lookup($this->authorized->getEndpoint(), [$this, 'ifDNSResolved']);
-    }
-
-    /**
-     * @param callable $callback
-     */
-    private function stashUsrCallback(callable $callback)
-    {
-        $this->usrCallback = $callback;
-    }
-
-    /**
-     * @param callable $callback
-     */
-    private function stashMsgCallback(callable $callback)
-    {
-        $this->msgCallback = $callback;
-    }
-
-    /**
-     * @param $response
-     */
-    private function execUsrCallback($response)
-    {
-        $processor = $this->usrCallback;
-
-        $this->usrCallback = null;
-
-        if (is_callable($processor))
-        {
-            call_user_func_array($processor, [$response, $this]);
-        }
-    }
-
-    /**
-     * Set waiting buffer for next send if we connected
-     * @param $buffer
-     */
-    private function setWaitingBuffer($buffer)
-    {
-        $this->usrBuffer = $buffer;
-    }
-
-    /**
-     * Check and send local buffer to network
-     */
-    private function clsWaitingBuffer()
-    {
-        if ($this->usrBuffer)
-        {
-            $this->doSending($this->usrBuffer);
-        }
-        else
-        {
-            if ($this->consuming && $this->reconnects)
-            {
-                $this->msgLoopingTick();
-            }
-        }
-
-        $this->usrBuffer = null;
-    }
-
-    /**
+     * IF receive data
      * @param $data
      */
-    private function doSending($data)
-    {
-        $this->setWaitTimeoutKiller();
-        $this->client->send($data);
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
-    }
-
-    /**
-     * Add timeout killer for send-wait
-     */
-    private function setWaitTimeoutKiller()
-    {
-        $this->waitTimeoutKiller = swoole_timer_after($this->timeoutWaitMS, [$this, 'ifWaitTimeoutKillerWake']);
-    }
-
-    /**
-     * Add timeout killer for connect-wait
-     */
-    private function setConnectTimeoutKiller()
-    {
-        $this->connectTimeoutKiller = swoole_timer_after($this->timeoutConnectMS, [$this, 'ifConnectTimeoutKillerWake']);
-    }
-
-    /**
-     * Remove timeout killer for send
-     */
-    private function disWaitTimeoutKiller()
-    {
-        swoole_timer_clear($this->waitTimeoutKiller);
-    }
-
-    /**
-     * Remove timeout killer for connect
-     */
-    private function disConnectTimeoutKiller()
-    {
-        swoole_timer_clear($this->connectTimeoutKiller);
-    }
-
-    /**
-     * Reconnect if timeout reached
-     */
-    public function ifConnectTimeoutKillerWake()
-    {
-        Monitor::ctx()->metricIncr(Metrics::NET_CONNECT_TIMEOUT);
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
-
-        $this->initConnection();
-
-        $this->execUsrCallback('FAILED: CONNECT TIMEOUT');
-    }
-
-    /**
-     * Reconnect if timeout reached
-     */
-    public function ifWaitTimeoutKillerWake()
-    {
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
-
-        if ($this->client->isConnected())
-        {
-            $this->client->close();
-        }
-
-        $this->execUsrCallback('FAILED: WAIT TIMEOUT');
-    }
-
-    /**
-     * @param $host
-     * @param $ip
-     */
-    public function ifDNSResolved($host, $ip)
-    {
-        if (filter_var($ip, FILTER_VALIDATE_IP))
-        {
-            $this->setConnectTimeoutKiller();
-            $this->client->connect($ip, 80);
-        }
-        else
-        {
-            $this->initConnection();
-        }
-    }
-
-    /**
-     * @param SocketClient $client
-     */
-    public function ifConnected(SocketClient $client)
-    {
-        $this->disConnectTimeoutKiller();
-        $this->connected = true;
-        $this->clsWaitingBuffer();
-    }
-
-    /**
-     * @param SocketClient $client
-     * @param $data
-     */
-    public function ifReceived(SocketClient $client, $data)
+    protected function netPacketReceiving($data)
     {
         $recvDONE = false;
         $recvDATA = '';
@@ -376,8 +183,6 @@ class HTTP extends AbstractBase implements Transfer
         }
         else
         {
-            $this->disWaitTimeoutKiller();
-
             $parsed = HTT2Proto::parseResponse($data);
             if (is_array($parsed))
             {
@@ -405,18 +210,21 @@ class HTTP extends AbstractBase implements Transfer
     }
 
     /**
-     * @param SocketClient $client
+     * IF reconnected
      */
-    public function ifError(SocketClient $client)
+    protected function netReconnected()
     {
-        $this->initConnection();
+        if ($this->consuming)
+        {
+            $this->msgLoopingTick();
+        }
     }
 
     /**
-     * @param SocketClient $client
+     * @param $stage
      */
-    public function ifClosed(SocketClient $client)
+    protected function netTimeoutReached($stage)
     {
-        $this->initConnection();
+        $this->execUsrCallback($this->wire->result(['code' => 504, 'body' => $stage]));
     }
 }
