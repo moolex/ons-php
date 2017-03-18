@@ -15,12 +15,23 @@ class Metrics
     const POOL_QUEUE_SIZE = 'pool.queue.size';
     const POOL_QUEUE_DROPS = 'pool.queue.drops';
 
-    const MSG_FORWARD_SUBMIT = 'msg.forward.submit';
-    const MSG_FORWARD_RESPONSE = 'msg.forward.response';
-    const MSG_FORWARD_TIMEOUT = 'msg.forward.timeout';
+    const NET_PACKET_SEND = 'net.packet.send';
+    const NET_PACKET_RECV = 'net.packet.recv';
 
-    const NET_CONNECT_TIMEOUT = 'net.connect.timeout';
+    const NET_TIMEOUT_CONNECT = 'net.time.connect';
+    const NET_TIMEOUT_SEND = 'net.timeout.send';
 
+    const NET_CONN_RECONNECT = 'net.conn.reconnect';
+
+    const ONS_MSG_FETCHED = 'ons.msg.fetched';
+    const ONS_MSG_CREATED = 'ons.msg.created';
+    const ONS_MSG_DELETED = 'ons.msg.deleted';
+    const ONS_REQ_FAILED = 'ons.request.failed';
+    const ONS_REQ_DENIED = 'ons.request.denied';
+    const ONS_TIMEOUT_SERV = 'ons.timeout.serv';
+    const ONS_TIMEOUT_GATE = 'ons.timeout.gate';
+
+    const STATS_UP_TIME = 'stats.up.time';
     const STATS_CPU_USAGE = 'stats.cpu.usage';
     const STATS_MEM_BYTES = 'stats.mem.bytes';
 }

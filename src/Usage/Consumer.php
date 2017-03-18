@@ -58,6 +58,7 @@ class Consumer
     {
         Monitor::init(1);
         Monitor::prepare(0);
+        $this->poolDEL->prepareWorks();
 
         $this->poolSUB->subscribe($messageProcessor);
     }

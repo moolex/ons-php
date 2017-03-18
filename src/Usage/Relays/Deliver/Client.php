@@ -56,10 +56,7 @@ class Client
             {
                 case FIN::SYM:
                     $this->consumer->delete($key, function ($result) {
-                        if ($result === true)
-                        {
-                            // ok
-                        }
+                        // do nothing
                     });
                     break;
                 default:

@@ -11,7 +11,7 @@ $authorized = new \ONS\Access\Authorized(
     Env::get('ONS_ACCESS_SECRET')
 );
 
-\ONS\Monitor\Monitor::setWebAPI(Env::get('API_LISTEN_PORT', 12334));
+\ONS\Monitor\Monitor::setWebAPI(Env::get('API_LISTEN_PORT', 12334), Env::get('API_LISTEN_HOST', '127.0.0.1'));
 
 $producerID = Env::get('ONS_PRODUCER_ID');
 

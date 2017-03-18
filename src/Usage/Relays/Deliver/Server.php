@@ -53,7 +53,6 @@ abstract class Server
         ], SimplePacket::SW_CONN_ARGS));
 
         $server->on('workerStart', [$this, 'mgrWorkerStart']);
-        $server->on('connect', [$this, 'connEstablished']);
         $server->on('receive', [$this, 'packetReceived']);
 
         Monitor::init($this->workersMax);
@@ -72,16 +71,6 @@ abstract class Server
     /**
      * @param SocketServer $server
      * @param $fd
-     */
-    final public function connEstablished(SocketServer $server, $fd)
-    {
-        var_dump('some connected');
-        $this->onConnEstablished($server, $fd);
-    }
-
-    /**
-     * @param SocketServer $server
-     * @param $fd
      * @param $fromID
      * @param $data
      */
@@ -89,12 +78,6 @@ abstract class Server
     {
         $this->onPacketReceived($server, $fd, $fromID, SimplePacket::unpack($data));
     }
-
-    /**
-     * @param SocketServer $server
-     * @param $fd
-     */
-    abstract protected function onConnEstablished(SocketServer $server, $fd);
 
     /**
      * @param SocketServer $server

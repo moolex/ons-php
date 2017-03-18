@@ -16,12 +16,18 @@ class Messages
     private $messages = [];
 
     /**
+     * @var int
+     */
+    private $count = 0;
+
+    /**
      * Messages constructor.
      * @param $body
      */
     public function __construct($body)
     {
         $this->messages = (array)json_decode($body, true);
+        $this->count = count($this->messages);
     }
 
     /**
@@ -30,5 +36,13 @@ class Messages
     public function gets()
     {
         return $this->messages;
+    }
+
+    /**
+     * @return int
+     */
+    public function count()
+    {
+        return $this->count;
     }
 }

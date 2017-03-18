@@ -40,9 +40,9 @@ trait NetClient
     protected $connected = false;
 
     /**
-     * @var int
+     * @var bool
      */
-    protected $reconnects = 0;
+    protected $reconnected = false;
 
     /**
      * @var SocketClient;
@@ -74,7 +74,11 @@ trait NetClient
      */
     final protected function initConnection()
     {
-        $this->connected && $this->reconnects ++;
+        if ($this->connected)
+        {
+            $this->reconnected = true;
+            Monitor::ctx()->metricIncr(Metrics::NET_CONN_RECONNECT);
+        }
 
         $this->connected = false;
 
@@ -143,7 +147,7 @@ trait NetClient
         $ok = $this->client->send($data);
         if ($ok)
         {
-            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_SUBMIT);
+            Monitor::ctx()->metricIncr(Metrics::NET_PACKET_SEND);
         }
         else
         {
@@ -179,7 +183,7 @@ trait NetClient
         }
         else
         {
-            $this->reconnects && $this->netReconnected();
+            $this->reconnected && $this->netReconnected();
         }
 
         $this->usrBuffer = null;
@@ -291,6 +295,7 @@ trait NetClient
     final public function ifReceived(SocketClient $client, $data)
     {
         $this->disWaitTimeoutKiller();
+        Monitor::ctx()->metricIncr(Metrics::NET_PACKET_RECV);
         $this->netPacketReceiving($data);
     }
 
@@ -316,8 +321,7 @@ trait NetClient
      */
     final public function ifConnectTimeoutKillerWake()
     {
-        Monitor::ctx()->metricIncr(Metrics::NET_CONNECT_TIMEOUT);
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
+        Monitor::ctx()->metricIncr(Metrics::NET_TIMEOUT_CONNECT);
 
         $this->initConnection();
 
@@ -329,7 +333,7 @@ trait NetClient
      */
     final public function ifWaitTimeoutKillerWake()
     {
-        Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_TIMEOUT);
+        Monitor::ctx()->metricIncr(Metrics::NET_TIMEOUT_SEND);
 
         if ($this->client->isConnected())
         {

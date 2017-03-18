@@ -10,6 +10,8 @@ namespace ONS\Wire;
 
 use ONS\Access\Authorized;
 use ONS\Exception\InvalidMethodArgsException;
+use ONS\Monitor\Metrics;
+use ONS\Monitor\Monitor;
 use ONS\Utils\HTT2Proto;
 
 class HTTP
@@ -138,15 +140,32 @@ class HTTP
             switch ($parsed['code'])
             {
                 case 200:
-                    return new Results\Messages($parsed['body']);
+                    $messages = new Results\Messages($parsed['body']);
+                    Monitor::ctx()->metricIncr(Metrics::ONS_MSG_FETCHED, $messages->count());
+                    return $messages;
                     break;
                 case 201:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_MSG_CREATED);
                     return true;
                     break;
                 case 204:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_MSG_DELETED);
                     return true;
                     break;
+                case 400:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_REQ_FAILED);
+                    return false;
+                    break;
+                case 403:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_REQ_DENIED);
+                    return false;
+                    break;
+                case 408:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_TIMEOUT_SERV);
+                    return new Results\Timeout('SERV');
+                    break;
                 case 504:
+                    Monitor::ctx()->metricIncr(Metrics::ONS_TIMEOUT_GATE);
                     return new Results\Timeout($parsed['body']);
                     break;
             }

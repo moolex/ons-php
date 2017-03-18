@@ -203,9 +203,14 @@ class HTTP extends Base implements Property, Queue
 
         if ($recvDONE)
         {
-            $this->consuming ? $this->msgInsGenerator($recvDATA) : $this->execUsrCallback($recvDATA);
-
-            Monitor::ctx()->metricIncr(Metrics::MSG_FORWARD_RESPONSE);
+            if ($this->consuming)
+            {
+                $this->msgInsGenerator($recvDATA);
+            }
+            else
+            {
+                $this->execUsrCallback($this->wire->result($recvDATA));
+            }
         }
     }
 
