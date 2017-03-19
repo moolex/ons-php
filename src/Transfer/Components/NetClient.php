@@ -262,6 +262,8 @@ trait NetClient
      */
     final public function ifDNSResolved($host, $ip)
     {
+        substr($ip, 0, 4) == '127.' && $ip = '127.0.0.1';
+
         if (filter_var($ip, FILTER_VALIDATE_IP))
         {
             $this->setConnectTimeoutKiller();
