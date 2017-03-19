@@ -187,7 +187,7 @@ class HTTP
      */
     private function genSign($sample)
     {
-        return $sign = base64_encode(hash_hmac('sha1', $sample, $this->authorized->getKeySecret(), true));
+        return base64_encode(hash_hmac('sha1', $sample, $this->authorized->getKeySecret(), true));
     }
 
     /**
